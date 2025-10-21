@@ -47,6 +47,78 @@ export default function Home() {
     return null
   }
 
+  // 内联图片组件，避免外部依赖
+  const NotionImage = ({ images, alt, fallbackIcon = '🏠', style = {}, overlayText = null }) => {
+    const imageUrl = getImageUrl(images)
+    
+    const baseStyle = {
+      width: '100%',
+      height: '200px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      borderRadius: '10px 10px 0 0',
+      overflow: 'hidden',
+      ...style
+    }
+
+    const overlayStyle = {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.4)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      fontSize: '1rem',
+      fontWeight: 'bold',
+      textAlign: 'center',
+      padding: '1rem'
+    }
+
+    if (imageUrl) {
+      return (
+        <div style={{
+          ...baseStyle,
+          backgroundImage: `url(${imageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}>
+          {overlayText && (
+            <div style={overlayStyle}>
+              {overlayText}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // fallback 显示
+    return (
+      <div style={{
+        ...baseStyle,
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={overlayStyle}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+              {fallbackIcon}
+            </div>
+            {overlayText && (
+              <div style={{ fontSize: '0.9rem' }}>
+                {overlayText}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const styles = {
     container: {
       minHeight: '100vh',
@@ -130,15 +202,15 @@ export default function Home() {
       transition: 'all 0.3s ease',
       backdropFilter: 'blur(10px)'
     },
-    section: {
-      padding: '3rem 2rem', // 减少 padding
+    compactSection: {
+      padding: '2rem 2rem',
       maxWidth: '1200px',
       margin: '0 auto'
     },
-    sectionTitle: {
-      fontSize: '2.5rem',
+    sectionTitleCompact: {
+      fontSize: '2rem',
       textAlign: 'center',
-      marginBottom: '1rem',
+      marginBottom: '0.5rem',
       color: '#2c5530',
       fontWeight: '300'
     },
@@ -154,7 +226,7 @@ export default function Home() {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
       gap: '2rem',
-      marginTop: '3rem'
+      marginTop: '2rem'
     },
     card: {
       backgroundColor: 'white',
@@ -162,32 +234,6 @@ export default function Home() {
       overflow: 'hidden',
       boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)',
       transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-    },
-    cardImage: {
-      width: '100%',
-      height: '200px', // 减少高度
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '2rem',
-      color: 'white',
-      position: 'relative'
-    },
-    fallbackImage: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    },
-    imageOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.3)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
     },
     cardContent: {
       padding: '2rem'
@@ -244,16 +290,6 @@ export default function Home() {
     experienceIcon: {
       fontSize: '3rem',
       marginBottom: '1rem'
-    },
-    compactSection: {
-      padding: '2rem 2rem'
-    },
-    sectionTitleCompact: {
-      fontSize: '2rem',
-      textAlign: 'center',
-      marginBottom: '0.5rem',
-      color: '#2c5530',
-      fontWeight: '300'
     }
   }
 
@@ -273,7 +309,7 @@ export default function Home() {
         </nav>
       </header>
 
-      {/* 英雄区域 - 优化高度 */}
+      {/* 英雄区域 */}
       <section style={styles.hero}>
         <div style={styles.heroContent}>
           <h1 style={styles.heroTitle}>梦想之家温泉民宿</h1>
@@ -287,7 +323,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 客房展示 - 修复图片显示 */}
+      {/* 客房展示 */}
       <section id="rooms" style={styles.compactSection}>
         <h2 style={styles.sectionTitleCompact}>精选客房</h2>
         <p style={styles.sectionSubtitle}>
@@ -301,62 +337,44 @@ export default function Home() {
           </div>
         ) : (
           <div style={styles.grid}>
-            {rooms.map((room, index) => {
-              const imageUrl = getImageUrl(room.gallery)
-              return (
-                <div key={index} style={styles.card}>
-                  <div 
-                    style={{
-                      ...styles.cardImage,
-                      ...(imageUrl ? {
-                        backgroundImage: `url(${imageUrl})`
-                      } : styles.fallbackImage)
-                    }}
-                  >
-                    {!imageUrl && (
-                      <div style={styles.imageOverlay}>
-                        🏠
-                      </div>
-                    )}
-                    {imageUrl && (
-                      <div style={styles.imageOverlay}>
-                        <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>
-                          {room.name}
+            {rooms.map((room, index) => (
+              <div key={index} style={styles.card}>
+                <NotionImage
+                  images={room.gallery}
+                  alt={room.name}
+                  fallbackIcon="🏠"
+                  overlayText={room.name}
+                />
+                <div style={styles.cardContent}>
+                  <h3 style={styles.cardTitle}>{room.name}</h3>
+                  <p style={styles.cardSubtitle}>{room.subtitle}</p>
+                  <p style={styles.cardDescription}>
+                    {room.description ? 
+                      (room.description.length > 100 ? 
+                        room.description.substring(0, 100) + '...' : 
+                        room.description) 
+                      : '舒适温馨的住宿体验，享受宁静的温泉时光'}
+                  </p>
+                  <div style={styles.priceTag}>¥{room.price}/晚</div>
+                  <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#666', marginTop: '0.5rem'}}>
+                    <span>👥 {room.capacity}人</span>
+                    <span>📐 {room.size}㎡</span>
+                  </div>
+                  {room.amenities && room.amenities.length > 0 && (
+                    <div style={styles.amenities}>
+                      {room.amenities.slice(0, 3).map((amenity, i) => (
+                        <span key={i} style={styles.amenityTag}>{amenity}</span>
+                      ))}
+                      {room.amenities.length > 3 && (
+                        <span style={{...styles.amenityTag, backgroundColor: '#f0f0f0', color: '#666'}}>
+                          +{room.amenities.length - 3}
                         </span>
-                      </div>
-                    )}
-                  </div>
-                  <div style={styles.cardContent}>
-                    <h3 style={styles.cardTitle}>{room.name}</h3>
-                    <p style={styles.cardSubtitle}>{room.subtitle}</p>
-                    <p style={styles.cardDescription}>
-                      {room.description ? 
-                        (room.description.length > 100 ? 
-                          room.description.substring(0, 100) + '...' : 
-                          room.description) 
-                        : '舒适温馨的住宿体验，享受宁静的温泉时光'}
-                    </p>
-                    <div style={styles.priceTag}>¥{room.price}/晚</div>
-                    <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#666', marginTop: '0.5rem'}}>
-                      <span>👥 {room.capacity}人</span>
-                      <span>📐 {room.size}㎡</span>
+                      )}
                     </div>
-                    {room.amenities && room.amenities.length > 0 && (
-                      <div style={styles.amenities}>
-                        {room.amenities.slice(0, 3).map((amenity, i) => (
-                          <span key={i} style={styles.amenityTag}>{amenity}</span>
-                        ))}
-                        {room.amenities.length > 3 && (
-                          <span style={{...styles.amenityTag, backgroundColor: '#f0f0f0', color: '#666'}}>
-                            +{room.amenities.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         )}
       </section>
