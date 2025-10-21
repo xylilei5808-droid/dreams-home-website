@@ -1,171 +1,284 @@
-import { Client } from '@notionhq/client';
-import { PageObjectResponse, QueryDatabaseResponse } from '@notionhq/client/build/src/api-endpoints';
+import { Client } from '@notionhq/client'
 
-// 1. 初始化 Notion 客户端
-// 它会自动读取我们在 .env.local 中设置的 NOTION_TOKEN
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
-
-// 2. 定义 Room 数据的结构 (Schema)
-// 这样在代码中使用时，我们就能知道 Room 对象里有哪些属性
-export interface Room {
-  id: string;
-  title: string;
-  slug: string;
-  price: number;
-  capacity: number;
-  amenities: string[];
-  onsenType: string;
-  heroImage: string;
-  published: boolean;
-  seoTitle: string;
+type RichTextValue = {
+  rich_text?: Array<{
+    plain_text?: string
+    text?: { content?: string }
+  }>
 }
 
-// 3. 辅助函数：提取属性值
-// Notion API 返回的数据结构非常复杂，我们需要一个函数来简化它
-function extractPropertyValue(property: any) {
-    // 提取 Title (标题)
-    if (property.type === 'title' && property.title.length > 0) {
-        return property.title[0].plain_text;
-    }
-    // 提取 Text (文本) / Slug
-    if (property.type === 'rich_text' && property.rich_text.length > 0) {
-        return property.rich_text[0].plain_text;
-    }
-    // 提取 Number (数字) / Price, Capacity
-    if (property.type === 'number') {
-        return property.number;
-    }
-    // 提取 Multi-select (多选) / Amenities
-    if (property.type === 'multi_select') {
-        return property.multi_select.map((item: { name: string }) => item.name);
-    }
-    // 提取 Select (单选) / Onsen Type
-    if (property.type === 'select' && property.select) {
-        return property.select.name;
-    }
-    // 提取 URL (网址) / Hero Image
-    if (property.type === 'url') {
-        return property.url;
-    }
-    // 提取 Checkbox (复选框) / Published
-    if (property.type === 'checkbox') {
-        return property.checkbox;
-    }
-    return null; // 否则返回空
+type TitleValue = {
+  title?: Array<{
+    plain_text?: string
+    text?: { content?: string }
+  }>
 }
 
+type SelectValue = {
+  select?: { name?: string }
+  multi_select?: Array<{ name?: string }>
+}
 
-// 4. 核心转换函数：将 Notion Page 转换为我们定义的 Room 结构
-function transformToRoom(page: PageObjectResponse): Room {
-    const properties = page.properties;
-    
-    // 注意：这里的属性名必须和你 Notion 数据库里设置的属性名保持一致！
+type NumberValue = {
+  number?: number
+}
+
+type FilesValue = {
+  files?: Array<{
+    type?: 'external' | 'file'
+    name?: string
+    external?: { url?: string }
+    file?: { url?: string }
+  }>
+}
+
+type RelationValue = {
+  relation?: Array<{ id: string }>
+}
+
+type CheckboxValue = {
+  checkbox?: boolean
+}
+
+type DateValue = {
+  date?: { start?: string | null }
+}
+
+type PageProperties = Record<
+  string,
+  RichTextValue & TitleValue & SelectValue & NumberValue & FilesValue & RelationValue & CheckboxValue & DateValue
+>
+
+type PageObject = {
+  id: string
+  properties: PageProperties
+}
+
+const notion = new Client({ auth: process.env.NOTION_TOKEN })
+
+const getText = (value?: RichTextValue | TitleValue) =>
+  value?.rich_text?.[0]?.text?.content ??
+  value?.rich_text?.[0]?.plain_text ??
+  value?.title?.[0]?.text?.content ??
+  value?.title?.[0]?.plain_text ??
+  ''
+
+const getSelect = (value?: SelectValue) => value?.select?.name ?? ''
+const getMultiSelect = (value?: SelectValue) => value?.multi_select?.map((item) => item.name ?? '').filter(Boolean) ?? []
+const getNumber = (value?: NumberValue) => value?.number ?? 0
+const getFiles = (value?: FilesValue) => value?.files ?? []
+const getRelationIds = (value?: RelationValue) => value?.relation?.map((item) => item.id) ?? []
+const getCheckbox = (value?: CheckboxValue) => value?.checkbox ?? false
+const getDateStart = (value?: DateValue) => value?.date?.start ?? ''
+
+export async function getRooms() {
+  if (!process.env.NOTION_ROOMS_DB_ID) return []
+  const response = await notion.databases.query({ database_id: process.env.NOTION_ROOMS_DB_ID })
+  return response.results.map((page) => mapRoom(page as PageObject))
+}
+
+function mapRoom(page: PageObject) {
+  const props = page.properties
+  return {
+    id: page.id,
+    name: getText(props.Name),
+    slug: getText(props.Slug),
+    subtitle: getText(props.Subtitle),
+    description: getText(props.Description),
+    price: getNumber(props.Price),
+    capacity: getNumber(props.Capacity),
+    size: getNumber(props.Size),
+    amenities: getMultiSelect(props.Amenities),
+    gallery: getFiles(props.Gallery),
+    status: getSelect(props.Status),
+    featured: getCheckbox(props.Featured)
+  }
+}
+
+export async function getPlans() {
+  if (!process.env.NOTION_PLANS_DB_ID) return []
+  const response = await notion.databases.query({ database_id: process.env.NOTION_PLANS_DB_ID })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
     return {
-        id: page.id,
-        title: extractPropertyValue(properties['Name (名称)']) || '无标题',
-        slug: extractPropertyValue(properties['Slug (网址路径)']) || page.id,
-        price: extractPropertyValue(properties['Price (价格)']) || 0,
-        capacity: extractPropertyValue(properties['Capacity (人数)']) || 0,
-        amenities: extractPropertyValue(properties['Amenities (设施)']) || [],
-        onsenType: extractPropertyValue(properties['Onsen Type (温泉类型)']) || '未知',
-        heroImage: extractPropertyValue(properties['Hero Image (主图链接)']) || '',
-        published: extractPropertyValue(properties['Published (发布)']) || false,
-        seoTitle: extractPropertyValue(properties['SEO Title (SEO标题)']) || '',
-    };
+      id: page.id,
+      name: getText(props.Name),
+      description: getText(props.Description),
+      includes: getText(props.Includes),
+      price: getNumber(props.Price),
+      duration: getNumber(props.Duration),
+      images: getFiles(props.Images),
+      popular: getCheckbox(props.Popular)
+    }
+  })
 }
 
-
-// 5. 核心查询函数：获取所有已发布的房型
-export async function getRooms(): Promise<Room[]> {
-    if (!process.env.NOTION_ROOMS_DB_ID) {
-        console.error("NOTION_ROOMS_DB_ID 未设置");
-        return [];
+export async function getJournalPosts() {
+  if (!process.env.NOTION_JOURNAL_DB_ID) return []
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_JOURNAL_DB_ID,
+    sorts: [{ property: 'Publish_Date', direction: 'descending' }]
+  })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      title: getText(props.Title),
+      content: getText(props.Content),
+      coverImage: getFiles(props.Cover_Image)[0] ?? null,
+      publishDate: getDateStart(props.Publish_Date),
+      tags: getMultiSelect(props.Tags),
+      featured: getCheckbox(props.Featured),
+      status: getSelect(props.Status)
     }
-    
-    try {
-        // 在 v5.x 版本中，使用 dataSources.query 替代 databases.query
-        const response = await notion.dataSources.query({
-            data_source_id: process.env.NOTION_ROOMS_DB_ID,
-            // 过滤条件：只获取 Published (发布) 属性为 true 的页面
-            filter: {
-                property: 'Published (发布)',
-                checkbox: {
-                    equals: true,
-                },
-            },
-            // 排序条件：按照 Order (排序) 属性升序排列
-            sorts: [{
-                property: 'Order (排序)',
-                direction: 'ascending',
-            }]
-        });
-
-        // 调试：打印完整的 API 响应
-        console.log('=== Notion API 响应 ===');
-        console.log('总结果数:', response.results.length);
-        console.log('完整响应:', JSON.stringify(response, null, 2));
-
-        // 过滤掉非 PageObjectResponse 的结果，并进行转换
-        const pages = response.results.filter(
-            (page): page is PageObjectResponse => 'properties' in page
-        );
-        
-        console.log('过滤后的页面数:', pages.length);
-        
-        return pages.map(transformToRoom);
-        
-    } catch (error) {
-        console.error("获取 Notion 房型数据失败:", error);
-        return [];
-    }
+  })
 }
 
-// 6. 辅助查询函数：根据 Slug 获取单个房型详情 (用于详情页)
-export async function getRoomBySlug(slug: string): Promise<Room | null> {
-    if (!process.env.NOTION_ROOMS_DB_ID) return null;
-
-    try {
-        // 在 v5.x 版本中，使用 dataSources.query 替代 databases.query
-        const response = await notion.dataSources.query({
-            data_source_id: process.env.NOTION_ROOMS_DB_ID,
-            filter: {
-                property: 'Slug (网址路径)', // 筛选 Slug 属性
-                rich_text: {
-                    equals: slug, // 值为传入的 slug
-                },
-            },
-        });
-
-        const page = response.results.find(
-            (page): page is PageObjectResponse => 'properties' in page
-        );
-
-        if (!page) return null;
-
-        return transformToRoom(page);
-    } catch (error) {
-        console.error(`根据 Slug 获取房型 ${slug} 失败:`, error);
-        return null;
+export async function getStories() {
+  if (!process.env.NOTION_STORIES_DB_ID) return []
+  const response = await notion.databases.query({ database_id: process.env.NOTION_STORIES_DB_ID })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      title: getText(props.Title),
+      content: getText(props.Content),
+      quote: getText(props.Quote),
+      beforeImage: getFiles(props.Before_Image)[0] ?? null,
+      afterImage: getFiles(props.After_Image)[0] ?? null,
+      chapter: getSelect(props.Chapter),
+      status: getSelect(props.Status)
     }
+  })
 }
 
-// 修复方法类型错误，将 "POST" 改为 "post"
-export async function testNotionAPI() {
-    try {
-        const response = await notion.request({
-            path: `databases/${process.env.NOTION_ROOMS_DB_ID}/query`,
-            method: 'post',
-            body: {
-                filter: {
-                    property: 'Published (发布)',
-                    checkbox: {
-                        equals: true,
-                    },
-                },
-            },
-        });
-        console.log('测试 API 响应:', response);
-    } catch (error) {
-        console.error('测试 API 调用失败:', error);
+export async function getExperiences() {
+  if (!process.env.NOTION_EXPERIENCES_DB_ID) return []
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_EXPERIENCES_DB_ID,
+    sorts: [{ property: 'Name', direction: 'ascending' }]
+  })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      name: getText(props.Name),
+      icon: getText(props.Icon) || '✨',
+      description: getText(props.Description),
+      details: getText(props.Details),
+      duration: getNumber(props.Duration),
+      maxGuests: getNumber(props.Max_Guests),
+      season: getMultiSelect(props.Season),
+      timeSlots: getText(props.Time_Slots),
+      coverImage: getFiles(props.Cover_Image)[0] ?? null,
+      category: getSelect(props.Category)
     }
+  })
+}
+
+export async function getCuisines() {
+  if (!process.env.NOTION_CUISINES_DB_ID) return []
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_CUISINES_DB_ID,
+    sorts: [{ property: 'Name', direction: 'ascending' }]
+  })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      name: getText(props.Name),
+      description: getText(props.Description),
+      coverImage: getFiles(props.Cover_Image)[0] ?? null,
+      style: getSelect(props.Style),
+      operatingHours: getText(props.Operating_Hours),
+      chef: getRelationIds(props.Chef)[0] ?? null,
+      dishes: getRelationIds(props.Dishes)
+    }
+  })
+}
+
+export async function getDishes() {
+  if (!process.env.NOTION_DISHES_DB_ID) return []
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_DISHES_DB_ID,
+    sorts: [{ property: 'Name', direction: 'ascending' }]
+  })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      name: getText(props.Name),
+      price: getNumber(props.Price),
+      description: getText(props.Description),
+      imageGallery: getFiles(props.Image_Gallery),
+      status: getSelect(props.Status) || '供应中',
+      spicyLevel: getSelect(props.Spicy_Level),
+      tags: getMultiSelect(props.Tags),
+      cuisine: getRelationIds(props.Cuisine)[0] ?? null
+    }
+  })
+}
+
+export async function getChefs() {
+  if (!process.env.NOTION_CHEFS_DB_ID) return []
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_CHEFS_DB_ID,
+    sorts: [{ property: 'Name', direction: 'ascending' }]
+  })
+  return response.results.map((page) => {
+    const props = (page as PageObject).properties
+    return {
+      id: page.id,
+      name: getText(props.Name),
+      bio: getText(props.Bio),
+      photo: getFiles(props.Photo)[0] ?? null,
+      specialties: getText(props.Specialties),
+      experience: getNumber(props.Experience)
+    }
+  })
+}
+
+export async function getRoomBySlug(slug: string) {
+  if (!process.env.NOTION_ROOMS_DB_ID || !slug) return null
+  const response = await notion.databases.query({
+    database_id: process.env.NOTION_ROOMS_DB_ID,
+    filter: { property: 'Slug', rich_text: { equals: slug } },
+    page_size: 1
+  })
+  const page = response.results[0] as PageObject | undefined
+  return page ? mapRoom(page) : null
+}
+
+export async function testNotionConnection() {
+  try {
+    const [rooms, plans, posts, stories, experiences, cuisines, dishes, chefs] = await Promise.all([
+      getRooms(),
+      getPlans(),
+      getJournalPosts(),
+      getStories(),
+      getExperiences(),
+      getCuisines(),
+      getDishes(),
+      getChefs()
+    ])
+
+    return {
+      success: true,
+      data: { rooms, plans, posts, stories, experiences, cuisines, dishes, chefs },
+      stats: {
+        totalRecords:
+          rooms.length + plans.length + posts.length + stories.length + experiences.length + cuisines.length + dishes.length + chefs.length,
+        databases: 8,
+        coreData: { rooms: rooms.length, plans: plans.length, posts: posts.length },
+        brandData: { stories: stories.length, experiences: experiences.length },
+        diningData: { cuisines: cuisines.length, dishes: dishes.length, chefs: chefs.length }
+      }
+    }
+  } catch (error) {
+    console.error('Notion connection failed:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+    }
+  }
 }
