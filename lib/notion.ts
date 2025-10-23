@@ -238,6 +238,52 @@ export async function getChefs() {
   })
 }
 
+export async function getHomeBanners() {
+  if (!process.env.NOTION_HOME_BANNERS_DB_ID) return []
+
+  const databaseId = process.env.NOTION_HOME_BANNERS_DB_ID
+  const mapBanner = (page: PageObject) => {
+    const props = page.properties
+    return {
+      id: page.id,
+      title: getText(props.Title),
+      subtitle: getText(props.Subtitle),
+      buttonText: getText(props.Button_Text),
+      buttonLink: getText(props.Button_Link),
+      image: getFiles(props.Image)[0] ?? null,
+      published: getCheckbox(props.Published)
+    }
+  }
+
+  const baseQuery = {
+    database_id: databaseId,
+    sorts: [{ property: 'Order', direction: 'ascending' }] as const
+  }
+
+  try {
+    const response = await notion.databases.query({
+      ...baseQuery,
+      filter: {
+        property: 'Published',
+        checkbox: { equals: true }
+      }
+    })
+    return response.results.map((page) => mapBanner(page as PageObject))
+  } catch (error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === 'validation_error'
+    ) {
+      const response = await notion.databases.query(baseQuery)
+      return response.results.map((page) => mapBanner(page as PageObject))
+    }
+    console.error('Error fetching home banners:', error)
+    return []
+  }
+}
+
 export async function getRoomBySlug(slug: string) {
   if (!process.env.NOTION_ROOMS_DB_ID || !slug) return null
   const response = await notion.databases.query({
@@ -250,35 +296,46 @@ export async function getRoomBySlug(slug: string) {
 }
 
 export async function testNotionConnection() {
-  try {
-    const [rooms, plans, posts, stories, experiences, cuisines, dishes, chefs] = await Promise.all([
-      getRooms(),
-      getPlans(),
-      getJournalPosts(),
-      getStories(),
-      getExperiences(),
-      getCuisines(),
-      getDishes(),
-      getChefs()
-    ])
-
-    return {
-      success: true,
-      data: { rooms, plans, posts, stories, experiences, cuisines, dishes, chefs },
-      stats: {
-        totalRecords:
-          rooms.length + plans.length + posts.length + stories.length + experiences.length + cuisines.length + dishes.length + chefs.length,
-        databases: 8,
-        coreData: { rooms: rooms.length, plans: plans.length, posts: posts.length },
-        brandData: { stories: stories.length, experiences: experiences.length },
-        diningData: { cuisines: cuisines.length, dishes: dishes.length, chefs: chefs.length }
-      }
-    }
-  } catch (error) {
-    console.error('Notion connection failed:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+  const [rooms, plans, posts, stories, experiences, cuisines, dishes, chefs, banners] = await Promise.all([
+    getRooms(),
+    getPlans(),
+    getJournalPosts(),
+    getStories(),
+    getExperiences(),
+    getCuisines(),
+    getDishes(),
+    getChefs(),
+    getHomeBanners()
+  ])
+  return {
+    success: true,
+    data: {
+      rooms,
+      plans,
+      posts,
+      stories,
+      experiences,
+      cuisines,
+      dishes,
+      chefs,
+      banners
+    },
+    stats: {
+      totalRecords:
+        rooms.length +
+        plans.length +
+        posts.length +
+        stories.length +
+        experiences.length +
+        cuisines.length +
+        dishes.length +
+        chefs.length +
+        banners.length,
+      databases: 9,
+      coreData: { rooms: rooms.length, plans: plans.length, posts: posts.length },
+      brandData: { stories: stories.length, experiences: experiences.length },
+      diningData: { cuisines: cuisines.length, dishes: dishes.length, chefs: chefs.length },
+      homeData: { banners: banners.length }
     }
   }
 }

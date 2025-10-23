@@ -1,4 +1,4 @@
-import { getRooms, getPlans, getJournalPosts, getStories, getExperiences, getCuisines, getDishes, getChefs } from '../../lib/notion'
+import { getRooms, getPlans, getJournalPosts, getStories, getExperiences, getCuisines, getDishes, getChefs, getHomeBanners } from '../../lib/notion'
 
 export default async function handler(req, res) {
   const { type } = req.query
@@ -39,6 +39,10 @@ export default async function handler(req, res) {
       case 'chefs':
         data = await getChefs()
         dataType = '主厨团队'
+        break
+      case 'home-banners':
+        data = await getHomeBanners()
+        dataType = '首页 Banner'
         break
       default:
         return res.status(400).json({ 

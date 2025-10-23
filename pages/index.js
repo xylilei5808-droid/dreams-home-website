@@ -5,24 +5,29 @@ export default function Home() {
   const [rooms, setRooms] = useState([])
   const [plans, setPlans] = useState([])
   const [experiences, setExperiences] = useState([])
+  const [banners, setBanners] = useState([])
   const [loading, setLoading] = useState(true)
+  const [currentSlide, setCurrentSlide] = useState(0)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [roomsRes, plansRes, experiencesRes] = await Promise.all([
+        const [roomsRes, plansRes, experiencesRes, bannersRes] = await Promise.all([
           fetch('/api/preview-data?type=rooms'),
           fetch('/api/preview-data?type=plans'),
-          fetch('/api/preview-data?type=experiences')
+          fetch('/api/preview-data?type=experiences'),
+          fetch('/api/preview-data?type=home-banners')
         ])
         
         const roomsData = await roomsRes.json()
         const plansData = await plansRes.json()
         const experiencesData = await experiencesRes.json()
+        const bannersData = await bannersRes.json()
         
         setRooms(roomsData.data || [])
         setPlans(plansData.data || [])
         setExperiences(experiencesData.data || [])
+        setBanners(bannersData.data || [])
       } catch (error) {
         console.error('Error fetching data:', error)
       } finally {
@@ -32,6 +37,14 @@ export default function Home() {
 
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (banners.length === 0) return
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % banners.length)
+    }, 6000)
+    return () => clearInterval(timer)
+  }, [banners])
 
   // 获取 Notion 图片 URL 的辅助函数
   const getImageUrl = (imageArray) => {
@@ -163,20 +176,36 @@ export default function Home() {
       fontSize: '0.95rem'
     },
     hero: {
-      height: '80vh', // 减少高度，减少空白
-      background: 'linear-gradient(135deg, rgba(44, 85, 48, 0.8), rgba(76, 129, 82, 0.6))',
+      height: '80vh',
+      position: 'relative',
+      overflow: 'hidden',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      textAlign: 'center',
-      color: 'white',
-      position: 'relative',
+      color: 'white'
+    },
+    heroSlide: {
+      position: 'absolute',
+      inset: 0,
       backgroundSize: 'cover',
-      backgroundPosition: 'center'
+      backgroundPosition: 'center',
+      transition: 'opacity 1.2s ease',
+      opacity: 0
+    },
+    heroSlideActive: {
+      opacity: 1
+    },
+    heroOverlay: {
+      position: 'absolute',
+      inset: 0,
+      background: 'linear-gradient(120deg, rgba(24,49,32,0.75) 0%, rgba(24,49,32,0.35) 60%, rgba(24,49,32,0.55) 100%)'
     },
     heroContent: {
+      position: 'relative',
+      zIndex: 2,
       maxWidth: '800px',
-      padding: '0 2rem'
+      padding: '0 2rem',
+      textAlign: 'center'
     },
     heroTitle: {
       fontSize: 'clamp(2.5rem, 5vw, 4rem)',
@@ -290,6 +319,28 @@ export default function Home() {
     experienceIcon: {
       fontSize: '3rem',
       marginBottom: '1rem'
+    },
+    heroControls: {
+      position: 'absolute',
+      bottom: '2rem',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      display: 'flex',
+      gap: '0.5rem',
+      zIndex: 3
+    },
+    heroDot: {
+      width: '10px',
+      height: '10px',
+      borderRadius: '50%',
+      backgroundColor: 'rgba(255,255,255,0.4)',
+      border: 'none',
+      cursor: 'pointer',
+      padding: 0,
+      transition: 'background-color 0.3s ease'
+    },
+    heroDotActive: {
+      backgroundColor: 'rgba(255,255,255,0.9)'
     }
   }
 
@@ -311,18 +362,62 @@ export default function Home() {
 
       {/* 英雄区域 */}
       <section style={styles.hero}>
-        <div style={styles.heroContent}>
-          <h1 style={styles.heroTitle}>梦想之家温泉民宿</h1>
-          <p style={styles.heroSubtitle}>
-            从废墟到梦想，180天重建奇迹<br />
-            京郊私汤温泉 · 侘寂美学空间 · 有机养生料理
-          </p>
-          <a href="#rooms" style={styles.ctaButton}>
-            探索客房
-          </a>
-        </div>
+        {banners.length > 0 ? (
+          <>
+            {banners.map((banner, index) => {
+              const imageUrl = banner.image ? getImageUrl([banner.image]) : null
+              return (
+                <div
+                  key={banner.id}
+                  style={{
+                    ...styles.heroSlide,
+                    ...(index === currentSlide ? styles.heroSlideActive : {}),
+                    backgroundImage: imageUrl
+                      ? `url(${imageUrl})`
+                      : 'linear-gradient(135deg, #365C3B 0%, #74986F 100%)'
+                  }}
+                />
+              )
+            })}
+            <div style={styles.heroOverlay} />
+            <div style={styles.heroContent}>
+              <h1 style={styles.heroTitle}>{banners[currentSlide]?.title || '梦想之家温泉民宿'}</h1>
+              <p style={styles.heroSubtitle}>{banners[currentSlide]?.subtitle || '京郊私汤温泉 · 侘寂美学空间 · 有机养生料理'}</p>
+              {banners[currentSlide]?.buttonLink ? (
+                <a href={banners[currentSlide].buttonLink} style={styles.ctaButton}>
+                  {banners[currentSlide].buttonText || '了解更多'}
+                </a>
+              ) : (
+                <a href="#rooms" style={styles.ctaButton}>
+                  {banners[currentSlide]?.buttonText || '探索客房'}
+                </a>
+              )}
+            </div>
+            <div style={styles.heroControls}>
+              {banners.map((banner, index) => (
+                <button
+                  key={banner.id}
+                  style={{
+                    ...styles.heroDot,
+                    ...(index === currentSlide ? styles.heroDotActive : {})
+                  }}
+                  onClick={() => setCurrentSlide(index)}
+                  aria-label={`切换到第 ${index + 1} 张轮播图`}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={styles.heroContent}>
+            <h1 style={styles.heroTitle}>梦想之家温泉民宿</h1>
+            <p style={styles.heroSubtitle}>从废墟到梦想，180天重建奇迹</p>
+            <a href="#rooms" style={styles.ctaButton}>
+              探索客房
+            </a>
+          </div>
+        )}
       </section>
-
+      
       {/* 客房展示 */}
       <section id="rooms" style={styles.compactSection}>
         <h2 style={styles.sectionTitleCompact}>精选客房</h2>
